@@ -98,11 +98,11 @@
   }
   
   ::-webkit-scrollbar-thumb {
-    @apply bg-celestial-200 rounded-full;
+    @apply bg-celestial-200 dark:bg-celestial-700 rounded-full;
   }
   
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-celestial-300;
+    @apply bg-celestial-300 dark:bg-celestial-600;
   }
   
   /* Glass effect */

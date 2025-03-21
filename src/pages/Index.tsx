@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import Visualizer from '@/components/Visualizer';
 import SearchPanel from '@/components/SearchPanel';
 import ControlPanel from '@/components/ControlPanel';
+import ThemeToggle from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { SpatialData, ViewState, VisualizationMode } from '@/types/data';
@@ -25,7 +25,6 @@ const Index = () => {
     rotationY: 0
   });
 
-  // Handle file upload
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -53,12 +52,10 @@ const Index = () => {
     }
   };
 
-  // Handle loading demo data
   const handleLoadDemoData = () => {
     try {
       setLoading(true);
       
-      // Use the mock data generator
       const mockData = createMockData();
       setData(mockData);
       
@@ -78,7 +75,6 @@ const Index = () => {
     }
   };
 
-  // Handle gene selection
   const handleGeneSelect = (gene: string) => {
     setSelectedGene(gene);
     if (gene) {
@@ -86,16 +82,13 @@ const Index = () => {
     }
   };
 
-  // Toggle between gene expression and cluster view
   const handleToggleClusterView = () => {
     setMode(prev => prev === 'gene' ? 'cluster' : 'gene');
     if (mode === 'gene') {
-      // When switching to cluster view, clear gene selection
       setSelectedGene('');
     }
   };
 
-  // Control panel actions
   const handleZoomIn = useCallback(() => {
     setViewState(prev => ({
       ...prev,
@@ -119,12 +112,10 @@ const Index = () => {
     });
   }, []);
 
-  // Download current view as image
   const handleDownload = useCallback(() => {
     const canvas = document.querySelector('canvas');
     if (!canvas) return;
     
-    // Create a download link
     const link = document.createElement('a');
     link.download = `cellestial-${mode === 'gene' ? selectedGene || 'viz' : 'clusters'}.png`;
     link.href = canvas.toDataURL('image/png');
@@ -136,7 +127,6 @@ const Index = () => {
     });
   }, [mode, selectedGene, toast]);
 
-  // Toggle fullscreen
   const handleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(err => {
@@ -151,7 +141,6 @@ const Index = () => {
     }
   }, []);
 
-  // Handle fullscreen change events
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -165,7 +154,6 @@ const Index = () => {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card py-2 px-4 flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <h1 className="text-lg font-medium">CELLestial Visualizer</h1>
@@ -210,17 +198,18 @@ const Index = () => {
           )}
         </div>
         
-        {data && (
-          <div className="text-sm text-muted-foreground">
-            {data.points.length.toLocaleString()} data points
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {data && (
+            <div className="text-sm text-muted-foreground">
+              {data.points.length.toLocaleString()} data points
+            </div>
+          )}
+          <ThemeToggle />
+        </div>
       </header>
       
-      {/* Main content */}
       <main className="flex-1 flex overflow-hidden">
-        {/* Visualization area */}
-        <div className="relative flex-1 overflow-hidden bg-[#fafafa] dark:bg-background">
+        <div className="relative flex-1 overflow-hidden bg-[#fafafa] dark:bg-celestial-950">
           {!data ? (
             <div className="h-full flex flex-col items-center justify-center">
               <div className="glass rounded-lg p-8 max-w-md text-center space-y-4 animate-scale-in">
@@ -304,7 +293,6 @@ const Index = () => {
           )}
         </div>
         
-        {/* Side panel */}
         {data && isPanelOpen && (
           <div className="w-64 h-full flex-shrink-0 transition-all duration-300 ease-out-expo">
             <SearchPanel 
