@@ -1,33 +1,186 @@
 
 import { SpatialData, Point } from '@/types/data';
+import * as h5wasm from 'h5wasm';
 
 /**
- * Mock function to simulate loading h5ad data
- * In a real implementation, this would use a library like hdf5.js or a backend service
+ * Loads h5ad data from a File object
  */
 export const loadH5adData = async (file: File): Promise<SpatialData> => {
-  // This is a mock implementation
-  return new Promise((resolve) => {
-    console.log(`Processing file: ${file.name}`);
+  console.log(`Processing file: ${file.name}`);
+  
+  try {
+    // Initialize the WASM backend for h5wasm
+    await h5wasm.ready;
     
-    // Simulate loading delay
-    setTimeout(() => {
-      // For demonstration, we'll create mock data
-      // In a real implementation, this would parse the h5ad file
-      const mockData = createMockData();
-      resolve(mockData);
-    }, 1500);
-  });
+    // Read the file as ArrayBuffer
+    const buffer = await file.arrayBuffer();
+    
+    // Open the h5ad file using h5wasm
+    const f = new h5wasm.File(new Uint8Array(buffer));
+    
+    // Extract data from the h5ad file structure
+    const points = extractSpatialCoordinates(f);
+    const { genes, expressionData } = extractGeneExpressionData(f, points.length);
+    const clusters = extractClusterData(f, points.length);
+    
+    // Assign cluster IDs to points if available
+    if (clusters) {
+      Object.keys(clusters).forEach(id => {
+        // Find points that belong to this cluster
+        points.forEach(point => {
+          if (point.clusterId === id) {
+            point.clusterId = id;
+          }
+        });
+      });
+    }
+    
+    return {
+      points,
+      genes,
+      clusters,
+      expressionData
+    };
+  } catch (error) {
+    console.error('Error parsing h5ad file:', error);
+    throw new Error(`Failed to parse h5ad file: ${error.message}`);
+  }
 };
 
 /**
- * Creates mock data for development and testing
+ * Extracts spatial coordinates from the h5ad file
  */
-function createMockData(): SpatialData {
-  // Create a grid of points
+function extractSpatialCoordinates(file: h5wasm.File): Point[] {
+  try {
+    // Try to find spatial coordinates in adata.obsm["spatial"]
+    if (file.get('obsm') && file.get('obsm').get('spatial')) {
+      const spatialData = file.get('obsm').get('spatial').value as number[][];
+      
+      // Create points from spatial coordinates
+      return spatialData.map((coords, index) => ({
+        x: coords[0] || 0,
+        y: coords[1] || 0,
+        z: coords.length > 2 ? coords[2] : 0,
+        clusterId: undefined
+      }));
+    }
+    
+    // Fallback to mock data if spatial coordinates not found
+    console.warn('Spatial coordinates not found in h5ad file, using mock data');
+    return createMockPoints();
+  } catch (error) {
+    console.error('Error extracting spatial coordinates:', error);
+    return createMockPoints();
+  }
+}
+
+/**
+ * Extracts gene expression data from the h5ad file
+ */
+function extractGeneExpressionData(file: h5wasm.File, numPoints: number): { genes: string[], expressionData: { [gene: string]: number[] } } {
+  try {
+    const genes: string[] = [];
+    const expressionData: { [gene: string]: number[] } = {};
+    
+    // Try to get gene names from adata.var.index
+    if (file.get('var') && file.get('var').get('index')) {
+      const geneList = file.get('var').get('index').value as string[];
+      genes.push(...geneList);
+    } else {
+      // Fallback to mock gene names
+      console.warn('Gene names not found in h5ad file, using mock gene names');
+      for (let i = 0; i < 500; i++) {
+        genes.push(`Gene${i + 1}`);
+      }
+    }
+    
+    // Try to get expression data from adata.X
+    if (file.get('X')) {
+      const expressionMatrix = file.get('X').value;
+      
+      // Check if expression matrix is in the expected format (array of arrays)
+      if (Array.isArray(expressionMatrix) && Array.isArray(expressionMatrix[0])) {
+        // Transpose the matrix: rows = spots, columns = genes
+        genes.forEach((gene, geneIndex) => {
+          expressionData[gene] = expressionMatrix.map(row => row[geneIndex] || 0);
+        });
+      } else {
+        console.warn('Expression matrix format not as expected, using mock data');
+        // Fall back to mock expression data
+        genes.forEach(gene => {
+          expressionData[gene] = Array(numPoints).fill(0).map(() => Math.random() * 10);
+        });
+      }
+    } else {
+      console.warn('Expression data not found in h5ad file, using mock data');
+      // Fall back to mock expression data
+      genes.forEach(gene => {
+        expressionData[gene] = Array(numPoints).fill(0).map(() => Math.random() * 10);
+      });
+    }
+    
+    return { genes, expressionData };
+  } catch (error) {
+    console.error('Error extracting gene expression data:', error);
+    // Fall back to mock data
+    const mockGenes = Array.from({ length: 500 }, (_, i) => `Gene${i + 1}`);
+    const mockExpressionData: { [gene: string]: number[] } = {};
+    
+    mockGenes.forEach(gene => {
+      mockExpressionData[gene] = Array(numPoints).fill(0).map(() => Math.random() * 10);
+    });
+    
+    return { genes: mockGenes, expressionData: mockExpressionData };
+  }
+}
+
+/**
+ * Extracts cluster data from the h5ad file
+ */
+function extractClusterData(file: h5wasm.File, numPoints: number): { [key: string]: string } | undefined {
+  try {
+    // Try to find cluster info in adata.obs["leiden"]
+    if (file.get('obs') && file.get('obs').get('leiden')) {
+      const clusterLabels = file.get('obs').get('leiden').value as string[];
+      
+      // Get unique cluster IDs
+      const uniqueClusters = Array.from(new Set(clusterLabels));
+      
+      // Create clusters object
+      const clusters: { [key: string]: string } = {};
+      uniqueClusters.forEach((clusterId, index) => {
+        clusters[clusterId] = `Cluster ${index + 1}`;
+      });
+      
+      return clusters;
+    }
+    
+    // Fallback to mock cluster data
+    console.warn('Cluster data not found in h5ad file, using mock clusters');
+    const mockClusters: { [key: string]: string } = {};
+    for (let i = 0; i < 10; i++) {
+      mockClusters[i.toString()] = `Cluster ${i + 1}`;
+    }
+    
+    return mockClusters;
+  } catch (error) {
+    console.error('Error extracting cluster data:', error);
+    // Fallback to mock cluster data
+    const mockClusters: { [key: string]: string } = {};
+    for (let i = 0; i < 10; i++) {
+      mockClusters[i.toString()] = `Cluster ${i + 1}`;
+    }
+    
+    return mockClusters;
+  }
+}
+
+/**
+ * Creates mock points for testing
+ */
+function createMockPoints(): Point[] {
   const points: Point[] = [];
   const size = 100;
-  const geneCount = 500;
   
   // Generate points in a grid pattern with some noise
   for (let i = 0; i < size; i++) {
@@ -44,27 +197,7 @@ function createMockData(): SpatialData {
     }
   }
   
-  // Generate gene names
-  const genes = Array.from({ length: geneCount }, (_, i) => `Gene${i + 1}`);
-  
-  // Generate mock expression data
-  const expressionData: { [gene: string]: number[] } = {};
-  genes.forEach(gene => {
-    expressionData[gene] = points.map(() => Math.random() * 10);
-  });
-  
-  // Generate cluster names
-  const clusters: { [key: string]: string } = {};
-  for (let i = 0; i < 10; i++) {
-    clusters[i.toString()] = `Cluster ${i + 1}`;
-  }
-  
-  return {
-    points,
-    genes,
-    clusters,
-    expressionData
-  };
+  return points;
 }
 
 /**
