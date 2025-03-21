@@ -30,6 +30,7 @@ const Visualizer: React.FC<VisualizerProps> = ({
   const pointsRef = useRef<THREE.Points | null>(null);
   const animationFrameRef = useRef<number>(0);
   const isDraggingRef = useRef<boolean>(false);
+  const isPanningRef = useRef<boolean>(false);
   const previousMousePosition = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   
   const [colorScale, setColorScale] = useState<typeof geneExpressionColorScale>(geneExpressionColorScale);
@@ -184,9 +185,9 @@ const Visualizer: React.FC<VisualizerProps> = ({
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     
-    // Create material
+    // Create material with adjusted size for better performance with large datasets
     const material = new THREE.PointsMaterial({
-      size: 0.01,
+      size: data.points.length > 100000 ? 0.005 : 0.01,
       vertexColors: true,
       sizeAttenuation: true,
       transparent: true,
@@ -205,7 +206,13 @@ const Visualizer: React.FC<VisualizerProps> = ({
     if (!containerRef.current) return;
     
     const handleMouseDown = (e: MouseEvent) => {
-      isDraggingRef.current = true;
+      if (e.shiftKey) {
+        // Panning mode when shift is pressed
+        isPanningRef.current = true;
+      } else {
+        // Rotation mode by default
+        isDraggingRef.current = true;
+      }
       previousMousePosition.current = {
         x: e.clientX,
         y: e.clientY
@@ -213,18 +220,37 @@ const Visualizer: React.FC<VisualizerProps> = ({
     };
     
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current) return;
-      
-      const deltaMove = {
-        x: e.clientX - previousMousePosition.current.x,
-        y: e.clientY - previousMousePosition.current.y
-      };
-      
-      onViewStateChange({
-        ...viewState,
-        rotationY: viewState.rotationY + deltaMove.x * 0.01,
-        rotationX: viewState.rotationX + deltaMove.y * 0.01
-      });
+      if (isDraggingRef.current) {
+        // Handle rotation
+        const deltaMove = {
+          x: e.clientX - previousMousePosition.current.x,
+          y: e.clientY - previousMousePosition.current.y
+        };
+        
+        onViewStateChange({
+          ...viewState,
+          rotationY: viewState.rotationY + deltaMove.x * 0.01,
+          rotationX: viewState.rotationX + deltaMove.y * 0.01
+        });
+      } else if (isPanningRef.current) {
+        // Handle panning (left, right, front, back)
+        const deltaMove = {
+          x: e.clientX - previousMousePosition.current.x,
+          y: e.clientY - previousMousePosition.current.y
+        };
+        
+        // Scale the movement based on zoom level
+        const panFactor = 0.005 / viewState.zoom;
+        
+        onViewStateChange({
+          ...viewState,
+          target: [
+            viewState.target[0] - deltaMove.x * panFactor,
+            viewState.target[1] + deltaMove.y * panFactor,
+            viewState.target[2]
+          ]
+        });
+      }
       
       previousMousePosition.current = {
         x: e.clientX,
@@ -234,6 +260,7 @@ const Visualizer: React.FC<VisualizerProps> = ({
     
     const handleMouseUp = () => {
       isDraggingRef.current = false;
+      isPanningRef.current = false;
     };
     
     const handleWheel = (e: WheelEvent) => {
@@ -248,17 +275,47 @@ const Visualizer: React.FC<VisualizerProps> = ({
       });
     };
     
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Pan with arrow keys
+      const panAmount = 0.05 / viewState.zoom;
+      let newTarget = [...viewState.target];
+      
+      switch (e.key) {
+        case 'ArrowLeft':
+          newTarget[0] += panAmount;
+          break;
+        case 'ArrowRight':
+          newTarget[0] -= panAmount;
+          break;
+        case 'ArrowUp':
+          newTarget[1] -= panAmount;
+          break;
+        case 'ArrowDown':
+          newTarget[1] += panAmount;
+          break;
+      }
+      
+      if (e.key.startsWith('Arrow')) {
+        onViewStateChange({
+          ...viewState,
+          target: newTarget as [number, number, number]
+        });
+      }
+    };
+    
     const container = containerRef.current;
     container.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     container.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('keydown', handleKeyDown);
     
     return () => {
       container.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       container.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [viewState, onViewStateChange]);
 
@@ -301,6 +358,17 @@ const Visualizer: React.FC<VisualizerProps> = ({
     <div className={`relative ${className}`}>
       <div ref={containerRef} className="w-full h-full" />
       {renderLegend()}
+      
+      {/* Controls help tooltip */}
+      <div className="absolute bottom-4 left-4 glass p-2 rounded-lg text-xs">
+        <p className="font-medium">Controls:</p>
+        <ul className="text-muted-foreground space-y-1 mt-1">
+          <li>Drag: Rotate view</li>
+          <li>Shift+Drag: Pan view</li>
+          <li>Arrow keys: Pan view</li>
+          <li>Scroll: Zoom in/out</li>
+        </ul>
+      </div>
     </div>
   );
 };

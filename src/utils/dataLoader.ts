@@ -1,4 +1,3 @@
-
 import { SpatialData, Point } from '@/types/data';
 import * as h5wasm from 'h5wasm';
 
@@ -6,8 +5,8 @@ import * as h5wasm from 'h5wasm';
  * Creates mock data for testing or when h5ad loading fails
  */
 export const createMockData = (): SpatialData => {
-  // Generate mock points
-  const points = createMockPoints();
+  // Generate mock points - creating 1 million points
+  const points = createMockPoints(1000000);
   
   // Generate mock gene names
   const genes = Array.from({ length: 500 }, (_, i) => `Gene${i + 1}`);
@@ -15,12 +14,23 @@ export const createMockData = (): SpatialData => {
   // Generate mock expression data
   const expressionData: { [gene: string]: number[] } = {};
   genes.forEach(gene => {
-    expressionData[gene] = Array(points.length).fill(0).map(() => Math.random() * 10);
+    // For better performance, we'll create sparse expression data
+    // Only store values for 20% of the points (still 200,000 values per gene)
+    const sparseData = new Array(points.length).fill(0);
+    
+    // Fill random 20% of points with expression values
+    const pointsToFill = Math.floor(points.length * 0.2);
+    for (let i = 0; i < pointsToFill; i++) {
+      const randomIndex = Math.floor(Math.random() * points.length);
+      sparseData[randomIndex] = Math.random() * 10;
+    }
+    
+    expressionData[gene] = sparseData;
   });
   
   // Generate mock clusters
   const clusters: { [key: string]: string } = {};
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 20; i++) {
     clusters[i.toString()] = `Cluster ${i + 1}`;
   }
   
@@ -51,7 +61,7 @@ export const loadH5adData = async (file: File): Promise<SpatialData> => {
     try {
       // The h5wasm.File constructor expects Uint8Array, not string
       // @ts-ignore - The h5wasm typings don't match the actual API
-      const f = new h5wasm.File(uint8Array, 'r');
+      const f = new h5wasm.File(uint8Array);
       
       // Extract data from the h5ad file structure
       const points = extractSpatialCoordinates(f);
@@ -97,13 +107,14 @@ function extractSpatialCoordinates(file: h5wasm.File): Point[] {
     // @ts-ignore - The h5wasm typings don't match the actual API
     const obsm = file.get('obsm');
     
+    // Check if obsm exists and has a get method
     // @ts-ignore - Ignoring type errors for h5wasm API
     if (obsm && typeof obsm.get === 'function') {
       // @ts-ignore - Ignoring type errors for h5wasm API
       const spatial = obsm.get('spatial');
       
       // @ts-ignore - Ignoring type errors for h5wasm API
-      if (spatial && spatial.value) {
+      if (spatial && 'value' in spatial) {
         // @ts-ignore - Ignoring type errors for h5wasm API
         const spatialData = spatial.value as number[][];
         
@@ -119,12 +130,12 @@ function extractSpatialCoordinates(file: h5wasm.File): Point[] {
     
     // Fallback to mock data if spatial coordinates not found
     console.warn('Spatial coordinates not found in h5ad file, using mock data');
-    return createMockPoints();
+    return createMockPoints(1000000);
   } catch (error) {
     console.error('Error extracting spatial coordinates:', error);
-    return createMockPoints();
+    return createMockPoints(1000000);
   }
-}
+};
 
 /**
  * Extracts gene expression data from the h5ad file
@@ -262,26 +273,74 @@ function extractClusterData(file: h5wasm.File, numPoints: number): { [key: strin
 
 /**
  * Creates mock points for testing
+ * @param count Number of points to generate (default: 1000000)
  */
-function createMockPoints(): Point[] {
+function createMockPoints(count: number = 1000000): Point[] {
   const points: Point[] = [];
-  const size = 100;
   
-  // Generate points in a grid pattern with some noise
-  for (let i = 0; i < size; i++) {
-    for (let j = 0; j < size; j++) {
-      if (Math.random() > 0.7) { // Add some sparsity
-        const noise = Math.random() * 0.3;
-        points.push({
-          x: i / size * 2 - 1 + noise,
-          y: j / size * 2 - 1 + noise,
-          z: Math.random() * 0.2,
-          clusterId: String(Math.floor(Math.random() * 10))
-        });
-      }
+  // For 1 million points, create a more efficient distribution algorithm
+  // This will create a more realistic spatial distribution by using a
+  // combination of grid patterns and clusters
+  
+  // Generate a grid of points with random offsets
+  const gridSize = Math.ceil(Math.sqrt(count / 2));
+  const gridSpacing = 2 / gridSize;
+  
+  let pointsCreated = 0;
+  
+  // Create grid points (50% of total)
+  for (let i = 0; i < gridSize && pointsCreated < count / 2; i++) {
+    for (let j = 0; j < gridSize && pointsCreated < count / 2; j++) {
+      // Add some randomness to grid positions
+      const noise = Math.random() * 0.2 * gridSpacing;
+      const x = (i / gridSize) * 2 - 1 + noise;
+      const y = (j / gridSize) * 2 - 1 + noise;
+      const z = (Math.random() - 0.5) * 0.1;
+      
+      // Assign to a random cluster (20 clusters)
+      const clusterId = Math.floor(Math.random() * 20).toString();
+      
+      points.push({ x, y, z, clusterId });
+      pointsCreated++;
     }
   }
   
+  // Create clustered points (50% of total)
+  // Define 10 cluster centers
+  const clusterCenters = Array.from({ length: 20 }, () => ({
+    x: Math.random() * 2 - 1,
+    y: Math.random() * 2 - 1,
+    clusterId: Math.floor(Math.random() * 20).toString()
+  }));
+  
+  // Fill remaining points with cluster-based distribution
+  while (pointsCreated < count) {
+    // Pick a random cluster center
+    const center = clusterCenters[Math.floor(Math.random() * clusterCenters.length)];
+    
+    // Create a point near this center
+    const distance = Math.random() * 0.5; // Max distance from center
+    const angle = Math.random() * Math.PI * 2;
+    
+    const x = center.x + Math.cos(angle) * distance;
+    const y = center.y + Math.sin(angle) * distance;
+    const z = (Math.random() - 0.5) * 0.1;
+    
+    // 80% chance to inherit cluster ID from center, 20% chance for random ID
+    const clusterId = Math.random() < 0.8 ? 
+      center.clusterId : 
+      Math.floor(Math.random() * 20).toString();
+    
+    points.push({ x, y, z, clusterId });
+    pointsCreated++;
+    
+    // Performance optimization: batch create points for large datasets
+    if (count > 100000 && pointsCreated % 10000 === 0) {
+      console.log(`Created ${pointsCreated} of ${count} points...`);
+    }
+  }
+  
+  console.log(`Created ${points.length} mock points`);
   return points;
 }
 
