@@ -15,8 +15,9 @@ export const loadH5adData = async (file: File): Promise<SpatialData> => {
     // Read the file as ArrayBuffer
     const buffer = await file.arrayBuffer();
     
-    // Open the h5ad file using h5wasm
-    const f = new h5wasm.File(new Uint8Array(buffer));
+    // Open the h5ad file using h5wasm - fix parameter type issue
+    // We need to create a File with the correct constructor signature
+    const f = new h5wasm.File(new Uint8Array(buffer), 'r');
     
     // Extract data from the h5ad file structure
     const points = extractSpatialCoordinates(f);
@@ -53,16 +54,21 @@ export const loadH5adData = async (file: File): Promise<SpatialData> => {
 function extractSpatialCoordinates(file: h5wasm.File): Point[] {
   try {
     // Try to find spatial coordinates in adata.obsm["spatial"]
-    if (file.get('obsm') && file.get('obsm').get('spatial')) {
-      const spatialData = file.get('obsm').get('spatial').value as number[][];
-      
-      // Create points from spatial coordinates
-      return spatialData.map((coords, index) => ({
-        x: coords[0] || 0,
-        y: coords[1] || 0,
-        z: coords.length > 2 ? coords[2] : 0,
-        clusterId: undefined
-      }));
+    // Using type guards to check the existence of properties before accessing them
+    const obsm = file.get('obsm');
+    if (obsm && typeof obsm.get === 'function') {
+      const spatial = obsm.get('spatial');
+      if (spatial && 'value' in spatial) {
+        const spatialData = spatial.value as number[][];
+        
+        // Create points from spatial coordinates
+        return spatialData.map((coords, index) => ({
+          x: coords[0] || 0,
+          y: coords[1] || 0,
+          z: coords.length > 2 ? coords[2] : 0,
+          clusterId: undefined
+        }));
+      }
     }
     
     // Fallback to mock data if spatial coordinates not found
@@ -83,9 +89,19 @@ function extractGeneExpressionData(file: h5wasm.File, numPoints: number): { gene
     const expressionData: { [gene: string]: number[] } = {};
     
     // Try to get gene names from adata.var.index
-    if (file.get('var') && file.get('var').get('index')) {
-      const geneList = file.get('var').get('index').value as string[];
-      genes.push(...geneList);
+    const varObj = file.get('var');
+    if (varObj && typeof varObj.get === 'function') {
+      const indexObj = varObj.get('index');
+      if (indexObj && 'value' in indexObj) {
+        const geneList = indexObj.value as string[];
+        genes.push(...geneList);
+      } else {
+        // Fallback to mock gene names
+        console.warn('Gene names not found in h5ad file, using mock gene names');
+        for (let i = 0; i < 500; i++) {
+          genes.push(`Gene${i + 1}`);
+        }
+      }
     } else {
       // Fallback to mock gene names
       console.warn('Gene names not found in h5ad file, using mock gene names');
@@ -95,7 +111,7 @@ function extractGeneExpressionData(file: h5wasm.File, numPoints: number): { gene
     }
     
     // Try to get expression data from adata.X
-    if (file.get('X')) {
+    if (file.get('X') && 'value' in file.get('X')) {
       const expressionMatrix = file.get('X').value;
       
       // Check if expression matrix is in the expected format (array of arrays)
@@ -140,19 +156,23 @@ function extractGeneExpressionData(file: h5wasm.File, numPoints: number): { gene
 function extractClusterData(file: h5wasm.File, numPoints: number): { [key: string]: string } | undefined {
   try {
     // Try to find cluster info in adata.obs["leiden"]
-    if (file.get('obs') && file.get('obs').get('leiden')) {
-      const clusterLabels = file.get('obs').get('leiden').value as string[];
-      
-      // Get unique cluster IDs
-      const uniqueClusters = Array.from(new Set(clusterLabels));
-      
-      // Create clusters object
-      const clusters: { [key: string]: string } = {};
-      uniqueClusters.forEach((clusterId, index) => {
-        clusters[clusterId] = `Cluster ${index + 1}`;
-      });
-      
-      return clusters;
+    const obs = file.get('obs');
+    if (obs && typeof obs.get === 'function') {
+      const leiden = obs.get('leiden');
+      if (leiden && 'value' in leiden) {
+        const clusterLabels = leiden.value as string[];
+        
+        // Get unique cluster IDs
+        const uniqueClusters = Array.from(new Set(clusterLabels));
+        
+        // Create clusters object
+        const clusters: { [key: string]: string } = {};
+        uniqueClusters.forEach((clusterId, index) => {
+          clusters[clusterId] = `Cluster ${index + 1}`;
+        });
+        
+        return clusters;
+      }
     }
     
     // Fallback to mock cluster data
