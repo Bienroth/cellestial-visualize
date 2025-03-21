@@ -6,8 +6,8 @@ import ControlPanel from '@/components/ControlPanel';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { SpatialData, ViewState, VisualizationMode } from '@/types/data';
-import { loadH5adData } from '@/utils/dataLoader';
-import { Upload, FileUp } from 'lucide-react';
+import { loadH5adData, createMockData } from '@/utils/dataLoader';
+import { Upload, FileUp, Play } from 'lucide-react';
 
 const Index = () => {
   const { toast } = useToast();
@@ -33,7 +33,6 @@ const Index = () => {
     try {
       setLoading(true);
       
-      // For now, we'll use the mock data loader
       const loadedData = await loadH5adData(file);
       setData(loadedData);
       
@@ -47,6 +46,31 @@ const Index = () => {
       toast({
         title: "Error loading data",
         description: "There was an error loading the h5ad file.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle loading demo data
+  const handleLoadDemoData = () => {
+    try {
+      setLoading(true);
+      
+      // Use the mock data generator
+      const mockData = createMockData();
+      setData(mockData);
+      
+      toast({
+        title: "Demo data loaded",
+        description: `Loaded ${mockData.points.length} sample data points`,
+      });
+    } catch (error) {
+      console.error('Error loading demo data:', error);
+      toast({
+        title: "Error loading demo data",
+        description: "There was an error creating the demo data.",
         variant: "destructive",
       });
     } finally {
@@ -146,27 +170,43 @@ const Index = () => {
         <div className="flex items-center space-x-4">
           <h1 className="text-lg font-medium">CELLestial Visualizer</h1>
           {!data && (
-            <label className="relative">
-              <Button 
-                variant="outline" 
+            <div className="flex space-x-2">
+              <label className="relative">
+                <Button 
+                  variant="outline" 
+                  className="space-x-2 flex items-center"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <div className="spinner h-4 w-4" />
+                  ) : (
+                    <FileUp className="h-4 w-4" />
+                  )}
+                  <span>Load H5AD File</span>
+                </Button>
+                <input 
+                  type="file" 
+                  accept=".h5ad" 
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                  onChange={handleFileUpload}
+                  disabled={loading}
+                />
+              </label>
+              
+              <Button
+                variant="secondary"
                 className="space-x-2 flex items-center"
+                onClick={handleLoadDemoData}
                 disabled={loading}
               >
                 {loading ? (
                   <div className="spinner h-4 w-4" />
                 ) : (
-                  <FileUp className="h-4 w-4" />
+                  <Play className="h-4 w-4" />
                 )}
-                <span>Load H5AD File</span>
+                <span>Demo</span>
               </Button>
-              <input 
-                type="file" 
-                accept=".h5ad" 
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
-                onChange={handleFileUpload}
-                disabled={loading}
-              />
-            </label>
+            </div>
           )}
         </div>
         
@@ -188,28 +228,45 @@ const Index = () => {
                 <p className="text-muted-foreground">
                   Upload an h5ad file containing Stereo-seq data to start exploring spatial transcriptomics.
                 </p>
-                <label className="relative inline-block mt-4">
-                  <Button 
-                    variant="default" 
+                <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                  <label className="relative flex-grow">
+                    <Button 
+                      variant="default" 
+                      size="lg"
+                      className="w-full space-x-2"
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <div className="spinner h-5 w-5" />
+                      ) : (
+                        <Upload className="h-5 w-5" />
+                      )}
+                      <span>Upload H5AD File</span>
+                    </Button>
+                    <input 
+                      type="file" 
+                      accept=".h5ad" 
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                      onChange={handleFileUpload}
+                      disabled={loading}
+                    />
+                  </label>
+                  
+                  <Button
+                    variant="secondary"
                     size="lg"
-                    className="w-full space-x-2"
+                    className="w-full sm:w-auto space-x-2"
+                    onClick={handleLoadDemoData}
                     disabled={loading}
                   >
                     {loading ? (
                       <div className="spinner h-5 w-5" />
                     ) : (
-                      <Upload className="h-5 w-5" />
+                      <Play className="h-5 w-5" />
                     )}
-                    <span>Upload H5AD File</span>
+                    <span>View Demo</span>
                   </Button>
-                  <input 
-                    type="file" 
-                    accept=".h5ad" 
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
-                    onChange={handleFileUpload}
-                    disabled={loading}
-                  />
-                </label>
+                </div>
               </div>
             </div>
           ) : (
