@@ -33,25 +33,33 @@ const Visualizer: React.FC<VisualizerProps> = ({
   const isPanningRef = useRef<boolean>(false);
   const previousMousePosition = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   
-  const [colorScale, setColorScale] = useState<typeof geneExpressionColorScale>(geneExpressionColorScale);
+  // Use state instead of recreating in useMemo to avoid infinite recursion
+  const [colorScaleState, setColorScaleState] = useState(geneExpressionColorScale);
+  const [expressionValues, setExpressionValues] = useState<number[] | null>(null);
   
-  // Calculate the visible expression data
-  const expressionData = useMemo(() => {
-    if (!data || !selectedGene || mode !== 'gene') return null;
+  // Calculate the visible expression data - Fixed to prevent infinite recursion
+  useEffect(() => {
+    if (!data || !selectedGene || mode !== 'gene') {
+      setExpressionValues(null);
+      return;
+    }
     
     const values = data.expressionData[selectedGene] || [];
-    if (values.length === 0) return null;
+    if (values.length === 0) {
+      setExpressionValues(null);
+      return;
+    }
     
     const min = Math.min(...values);
     const max = Math.max(...values);
     
-    setColorScale({
+    setColorScaleState({
       ...geneExpressionColorScale,
       min,
       max
     });
     
-    return values;
+    setExpressionValues(values);
   }, [data, selectedGene, mode]);
 
   // Initialize scene, camera, and renderer
@@ -168,9 +176,9 @@ const Visualizer: React.FC<VisualizerProps> = ({
       positions[i * 3 + 2] = point.z || 0;
       
       let color;
-      if (mode === 'gene' && expressionData && selectedGene) {
-        const value = expressionData[i] || 0;
-        color = new THREE.Color(getColorForValue(value, colorScale));
+      if (mode === 'gene' && expressionValues && selectedGene) {
+        const value = expressionValues[i] || 0;
+        color = new THREE.Color(getColorForValue(value, colorScaleState));
       } else if (mode === 'cluster' && point.clusterId) {
         color = new THREE.Color(getColorForCluster(point.clusterId));
       } else {
@@ -199,7 +207,7 @@ const Visualizer: React.FC<VisualizerProps> = ({
     sceneRef.current.add(points);
     pointsRef.current = points;
     
-  }, [data, mode, selectedGene, expressionData, colorScale]);
+  }, [data, mode, selectedGene, expressionValues, colorScaleState]);
 
   // Mouse and touch event handlers for interaction
   useEffect(() => {
@@ -325,7 +333,7 @@ const Visualizer: React.FC<VisualizerProps> = ({
       return (
         <div className="absolute bottom-4 right-4 w-64 glass p-3 rounded-lg">
           <ColorScale
-            scale={colorScale}
+            scale={colorScaleState}
             label={`${selectedGene} Expression`}
           />
         </div>

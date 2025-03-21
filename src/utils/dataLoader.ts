@@ -1,3 +1,4 @@
+
 import { SpatialData, Point } from '@/types/data';
 import * as h5wasm from 'h5wasm';
 
@@ -295,7 +296,10 @@ function createMockPoints(count: number = 1000000): Point[] {
       const noise = Math.random() * 0.2 * gridSpacing;
       const x = (i / gridSize) * 2 - 1 + noise;
       const y = (j / gridSize) * 2 - 1 + noise;
-      const z = (Math.random() - 0.5) * 0.1;
+      
+      // Add true 3D z-coordinate (not just small noise)
+      // Create a wave pattern for z-coordinate
+      const z = Math.sin(x * 3) * 0.2 + Math.cos(y * 3) * 0.2;
       
       // Assign to a random cluster (20 clusters)
       const clusterId = Math.floor(Math.random() * 20).toString();
@@ -306,25 +310,34 @@ function createMockPoints(count: number = 1000000): Point[] {
   }
   
   // Create clustered points (50% of total)
-  // Define 10 cluster centers
-  const clusterCenters = Array.from({ length: 20 }, () => ({
-    x: Math.random() * 2 - 1,
-    y: Math.random() * 2 - 1,
-    clusterId: Math.floor(Math.random() * 20).toString()
-  }));
+  // Define 10 cluster centers with z-coordinates
+  const clusterCenters = Array.from({ length: 20 }, () => {
+    const x = Math.random() * 2 - 1;
+    const y = Math.random() * 2 - 1;
+    // Create distinct z-layers for different clusters
+    const z = (Math.random() * 2 - 1) * 0.4;
+    return {
+      x, 
+      y, 
+      z,
+      clusterId: Math.floor(Math.random() * 20).toString()
+    };
+  });
   
   // Fill remaining points with cluster-based distribution
   while (pointsCreated < count) {
     // Pick a random cluster center
     const center = clusterCenters[Math.floor(Math.random() * clusterCenters.length)];
     
-    // Create a point near this center
+    // Create a point near this center in 3D space
     const distance = Math.random() * 0.5; // Max distance from center
-    const angle = Math.random() * Math.PI * 2;
+    const azimuth = Math.random() * Math.PI * 2; // Horizontal angle
+    const polar = Math.random() * Math.PI; // Vertical angle
     
-    const x = center.x + Math.cos(angle) * distance;
-    const y = center.y + Math.sin(angle) * distance;
-    const z = (Math.random() - 0.5) * 0.1;
+    // Convert spherical coordinates to Cartesian
+    const x = center.x + Math.sin(polar) * Math.cos(azimuth) * distance;
+    const y = center.y + Math.sin(polar) * Math.sin(azimuth) * distance;
+    const z = center.z + Math.cos(polar) * distance;
     
     // 80% chance to inherit cluster ID from center, 20% chance for random ID
     const clusterId = Math.random() < 0.8 ? 
